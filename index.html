@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>SenEntreprise</title>
+<script src="https://cdn.tailwindcss.com"></script></head>
+<body class="bg-slate-100 text-slate-800 p-4"><div class="max-w-3xl mx-auto">
+ <div class="bg-emerald-700 text-white p-5 rounded-xl shadow mb-6 print:rounded-none">
+  <h1 class="text-xl font-bold">SenEntreprise - Simulateur Sénégal</h1>
+  <p class="text-emerald-100 text-xs mt-1">Statut OHADA &amp; Impôts (CGI Sénégal)</p></div>
+
+ <form method="POST" class="print:hidden bg-white p-5 rounded-xl shadow space-y-4 mb-6">
+  <div><label class="block text-sm font-semibold mb-1">Nombre d'associés</label>
+   <select name="associes" class="w-full border rounded-lg p-2.5 text-sm">
+    <option value="1" {{ 'selected' if f.associes=='1' }}>1 seul (Individuel)</option>
+    <option value="2" {{ 'selected' if f.associes=='2' }}>2 ou plusieurs associés</option></select></div>
+  <div><label class="block text-sm font-semibold mb-1">Activité principale</label>
+   <select name="activite" class="w-full border rounded-lg p-2.5 text-sm">
+    <option value="services" {{ 'selected' if f.activite=='services' }}>Prestation de services / IT / Conseil</option>
+    <option value="commerce" {{ 'selected' if f.activite=='commerce' }}>Commerce / Achat-Revente</option></select></div>
+  <div><label class="block text-sm font-semibold mb-1">Chiffre d'Affaires Annuel (FCFA)</label>
+   <input type="number" name="ca" required min="0" value="{{ f.ca }}" placeholder="Ex: 15000000" class="w-full border rounded-lg p-2.5 text-sm"></div>
+  <div><label class="block text-sm font-semibold mb-1">Charges annuelles hors salaires (FCFA)</label>
+   <input type="number" name="charges" required min="0" value="{{ f.charges }}" placeholder="Ex: 5000000" class="w-full border rounded-lg p-2.5 text-sm"></div>
+  <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="protection" class="w-4 h-4" {{ 'checked' if f.protection }}><span>Protéger mon patrimoine personnel</span></label>
+  <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="investisseurs" class="w-4 h-4" {{ 'checked' if f.investisseurs }}><span>Je cherche des investisseurs</span></label>
+  <details class="border rounded-lg p-3" {{ 'open' if f.salaire_gerant or f.nb_salaries }}>
+   <summary class="text-sm font-semibold">Salaires (optionnel)</summary>
+   <div class="space-y-3 mt-3">
+    <div><label class="block text-sm mb-1">Salaire brut mensuel du gérant (FCFA)</label>
+     <input type="number" name="salaire_gerant" min="0" value="{{ f.salaire_gerant }}" class="w-full border rounded-lg p-2.5 text-sm"></div>
+    <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="cadre" class="w-4 h-4" {{ 'checked' if f.cadre }}><span>Gérant cadre (régime complémentaire)</span></label>
+    <div><label class="block text-sm mb-1">Parts fiscales du gérant</label>
+     <input type="number" step="0.5" min="1" max="5" name="parts" value="{{ f.parts }}" class="w-full border rounded-lg p-2.5 text-sm"></div>
+    <div><label class="block text-sm mb-1">Nombre de salariés</label>
+     <input type="number" name="nb_salaries" min="0" value="{{ f.nb_salaries }}" class="w-full border rounded-lg p-2.5 text-sm"></div>
+    <div><label class="block text-sm mb-1">Salaire brut mensuel moyen d'un salarié (FCFA)</label>
+     <input type="number" name="salaire_staff" min="0" value="{{ f.salaire_staff }}" class="w-full border rounded-lg p-2.5 text-sm"></div>
+   </div></details>
+  <button type="submit" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">Calculer</button>
+ </form>
+
+ {% if r %}
+ <div class="bg-white p-5 rounded-xl shadow border-l-4 border-emerald-600 mb-4">
+  <span class="text-xs font-bold uppercase text-emerald-700 bg-emerald-50 px-2 py-1 rounded">Statut Conseillé</span>
+  <h2 class="text-xl font-bold mt-2">{{ r.statut_nom }}</h2>
+  <p class="text-sm text-slate-600 mt-1">{{ r.desc }}</p></div>
+
+ <div class="bg-white p-5 rounded-xl shadow space-y-2 text-sm mb-4">
+  <h3 class="font-bold text-base border-b pb-2 mb-2">Estimation Fiscale ({{ 'CGU' if r.regime=='CGU' else 'Régime du Réel' }})</h3>
+  <div class="flex justify-between"><span>Chiffre d'Affaires :</span><b>{{ r.ca|f }}</b></div>
+  <div class="flex justify-between"><span>Bénéfice brut (CA - charges) :</span><b>{{ r.benefice|f }}</b></div>
+  <div class="flex justify-between text-red-600"><span>{{ r.principal.label_impot }} :</span><b>- {{ r.principal.impot|f }}</b></div>
+  <div class="flex justify-between"><span>TVA (18%) :</span><b>{{ 'Oui (CA > 50M FCFA)' if r.tva else 'Non (Franchise)' }}</b></div>
+  <div class="flex justify-between text-base pt-2 border-t text-emerald-700"><span>Net après impôt{{ ' (salaires inclus)' if r.gerant or r.staff }} :</span><b>{{ r.principal.dispo|f }}</b></div>
+ </div>
+
+ <div class="bg-white p-5 rounded-xl shadow text-sm mb-4">
+  <h3 class="font-bold text-base border-b pb-2 mb-2">Comparatif des régimes</h3>
+  <div class="overflow-x-auto"><table class="w-full">
+   <tr class="border-b"><th class="text-left p-1"></th>
+    <th class="p-1 {{ 'bg-emerald-100' if r.meilleur=='A' }}">{{ r.a.titre }}</th>
+    <th class="p-1 {{ 'bg-emerald-100' if r.meilleur=='B' }}">{{ r.b.titre }}</th></tr>
+   {% if r.a.ok %}
+   <tr class="border-b"><td class="p-1">Impôt activité</td><td class="p-1 text-right">{{ r.a.impot|f }}</td><td class="p-1 text-right">{{ r.b.impot|f }}</td></tr>
+   <tr class="border-b"><td class="p-1">Charges sociales employeur</td><td class="p-1 text-right">{{ r.a.sociaux|f }}</td><td class="p-1 text-right">{{ r.b.sociaux|f }}</td></tr>
+   <tr class="border-b"><td class="p-1">IR + TRIMF salaires</td><td class="p-1 text-right">{{ r.a.perso|f }}</td><td class="p-1 text-right">{{ r.b.perso|f }}</td></tr>
+   <tr class="font-bold"><td class="p-1">Disponible pour vous*</td><td class="p-1 text-right">{{ r.a.dispo|f }}</td><td class="p-1 text-right">{{ r.b.dispo|f }}</td></tr>
+   {% else %}
+   <tr><td class="p-1">Impôt activité</td><td class="p-1 text-right text-gray-400">CGU non éligible</td><td class="p-1 text-right">{{ r.b.impot|f }}</td></tr>
+   <tr class="font-bold"><td class="p-1">Disponible pour vous*</td><td class="p-1 text-right">-</td><td class="p-1 text-right">{{ r.b.dispo|f }}</td></tr>
+   {% endif %}
+  </table></div>
+  <p class="text-xs text-slate-500 mt-2">Réel : {{ r.b.label_impot }}. *Net du gérant + résultat après impôt, avant impôt sur dividendes. CA supposé hors TVA.</p></div>
+
+ {% for nom, s in [('Gérant', r.gerant), ('Salariés (total ' ~ r.nb ~ ')', r.staff)] if s %}
+ <div class="bg-white p-5 rounded-xl shadow text-sm mb-4">
+  <h3 class="font-bold text-base border-b pb-2 mb-2">{{ nom }} - détail annuel</h3>
+  <ul class="space-y-1">
+   <li>Brut : {{ s.brut|f }}</li><li>Cotisations salariales (IPRES) : {{ s.cotis_sal|f }}</li>
+   <li>IR : {{ s.ir|f }} - TRIMF : {{ s.trimf|f }}</li><li><b>Net perçu : {{ s.net|f }}</b></li>
+   <li>Charges patronales (IPRES, CSS, CFCE) : {{ s.charges_emp|f }}</li>
+   <li><b>Coût total employeur : {{ s.cout|f }}</b></li></ul></div>
+ {% endfor %}
+
+ <p class="text-xs text-amber-700 bg-amber-50 rounded-lg p-3 mb-4">Estimation indicative, hors quotient familial détaillé, abattements et exonérations. Taux et seuils (CGU, TRIMF, CFCE) à valider auprès de la DGID ou d'un expert-comptable.</p>
+ <button onclick="window.print()" class="print:hidden w-full border border-emerald-600 text-emerald-700 bg-white rounded-lg p-3 font-semibold mb-6">Imprimer / Enregistrer en PDF</button>
+ {% endif %}
+</div></body></html>
