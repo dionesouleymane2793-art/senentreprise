@@ -2,7 +2,7 @@
 from flask import Flask, render_template, request
 from fiscal import fcfa, simuler
 
-app = Flask(__name__)
+app = Flask(__name__,template_folder=".")
 app.template_filter("f")(fcfa)
 
 
