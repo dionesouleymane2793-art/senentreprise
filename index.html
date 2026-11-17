@@ -1,13 +1,36 @@
 <!DOCTYPE html>
 <html lang="fr"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>SenEntreprise</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#047857">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<title>SenEntreprise</title>
 <script src="https://cdn.tailwindcss.com"></script></head>
+{% macro tip(k) %}<button type="button" class="tipbtn text-emerald-700 font-bold text-xs px-1" data-k="{{ k }}" aria-label="Explication {{ k }}">(?)</button>{% endmacro %}
+{% macro money(name, label, val, ph='', req=False, quick=True) %}
+<div><div class="flex items-center gap-1 mb-1"><label class="block text-sm font-semibold" for="{{ name }}">{{ label }}</label></div>
+ <input type="text" inputmode="numeric" autocomplete="off" id="{{ name }}" name="{{ name }}" {{ 'required' if req }} value="{{ val }}" placeholder="{{ ph }}" class="money w-full border rounded-lg p-2.5 text-sm">
+ {% if quick %}<div class="flex gap-2 mt-2">
+  {% for n, t in [(1000000,'+1M'),(5000000,'+5M'),(10000000,'+10M')] %}
+  <button type="button" data-add="{{ n }}" data-target="{{ name }}" class="quick flex-1 border border-emerald-600 text-emerald-700 rounded-lg py-1.5 text-sm font-semibold">{{ t }}</button>{% endfor %}
+  <button type="button" data-clear="{{ name }}" class="quick border border-slate-300 text-slate-500 rounded-lg px-3 py-1.5 text-sm">0</button>
+ </div>{% endif %}</div>
+{% endmacro %}
 <body class="bg-slate-100 text-slate-800 p-4"><div class="max-w-3xl mx-auto">
- <div class="bg-emerald-700 text-white p-5 rounded-xl shadow mb-6 print:rounded-none">
+ <div class="bg-emerald-700 text-white p-5 rounded-xl shadow mb-4 print:rounded-none">
   <h1 class="text-xl font-bold">SenEntreprise - Simulateur Sénégal</h1>
-  <p class="text-emerald-100 text-xs mt-1">Statut OHADA &amp; Impôts (CGI Sénégal)</p></div>
+  <p class="text-emerald-100 text-xs mt-1">Statut OHADA &amp; Impôts (CGI Sénégal)</p>
+  <button id="installBtn" type="button" class="hidden mt-3 bg-white text-emerald-700 text-sm font-semibold px-3 py-1.5 rounded-lg print:hidden">Installer l'application</button></div>
 
- <form method="POST" class="print:hidden bg-white p-5 rounded-xl shadow space-y-4 mb-6">
+ <div id="offline" class="hidden bg-amber-100 text-amber-800 text-sm rounded-lg p-3 mb-4">Vous êtes hors ligne : le calcul est indisponible. Le dernier bilan enregistré s'affiche ci-dessous.</div>
+
+ <nav class="flex gap-2 mb-4 print:hidden">
+  <button type="button" data-tab="simu" class="tab flex-1 py-2.5 rounded-lg font-semibold text-sm">Simulateur</button>
+  <button type="button" data-tab="demarches" class="tab flex-1 py-2.5 rounded-lg font-semibold text-sm">Démarches &amp; Guichets</button>
+ </nav>
+
+<section id="tab-simu">
+ <form id="form" method="POST" class="print:hidden bg-white p-5 rounded-xl shadow space-y-4 mb-6">
   <div><label class="block text-sm font-semibold mb-1">Nombre d'associés</label>
    <select name="associes" class="w-full border rounded-lg p-2.5 text-sm">
     <option value="1" {{ 'selected' if f.associes=='1' }}>1 seul (Individuel)</option>
@@ -16,41 +39,50 @@
    <select name="activite" class="w-full border rounded-lg p-2.5 text-sm">
     <option value="services" {{ 'selected' if f.activite=='services' }}>Prestation de services / IT / Conseil</option>
     <option value="commerce" {{ 'selected' if f.activite=='commerce' }}>Commerce / Achat-Revente</option></select></div>
-  <div><label class="block text-sm font-semibold mb-1">Chiffre d'Affaires Annuel (FCFA)</label>
-   <input type="number" name="ca" required min="0" value="{{ f.ca }}" placeholder="Ex: 15000000" class="w-full border rounded-lg p-2.5 text-sm"></div>
-  <div><label class="block text-sm font-semibold mb-1">Charges annuelles hors salaires (FCFA)</label>
-   <input type="number" name="charges" required min="0" value="{{ f.charges }}" placeholder="Ex: 5000000" class="w-full border rounded-lg p-2.5 text-sm"></div>
+  {{ money('ca', "Chiffre d'Affaires annuel (FCFA)", f.ca, 'Ex : 15 000 000', True) }}
+  {{ money('charges', 'Charges annuelles hors salaires (FCFA)', f.charges, 'Ex : 5 000 000', True) }}
   <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="protection" class="w-4 h-4" {{ 'checked' if f.protection }}><span>Protéger mon patrimoine personnel</span></label>
   <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="investisseurs" class="w-4 h-4" {{ 'checked' if f.investisseurs }}><span>Je cherche des investisseurs</span></label>
+  <div class="flex items-center gap-1"><label class="flex items-center gap-2 text-sm"><input type="checkbox" name="nouvelle" class="w-4 h-4" {{ 'checked' if f.nouvelle }}><span>Entreprise créée il y a moins de 3 ans</span></label>{{ tip('IMF') }}</div>
   <details class="border rounded-lg p-3" {{ 'open' if f.salaire_gerant or f.nb_salaries }}>
    <summary class="text-sm font-semibold">Salaires (optionnel)</summary>
    <div class="space-y-3 mt-3">
-    <div><label class="block text-sm mb-1">Salaire brut mensuel du gérant (FCFA)</label>
-     <input type="number" name="salaire_gerant" min="0" value="{{ f.salaire_gerant }}" class="w-full border rounded-lg p-2.5 text-sm"></div>
+    {{ money('salaire_gerant', 'Salaire brut mensuel du gérant (FCFA)', f.salaire_gerant, '', False, False) }}
     <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="cadre" class="w-4 h-4" {{ 'checked' if f.cadre }}><span>Gérant cadre (régime complémentaire)</span></label>
     <div><label class="block text-sm mb-1">Parts fiscales du gérant</label>
      <input type="number" step="0.5" min="1" max="5" name="parts" value="{{ f.parts }}" class="w-full border rounded-lg p-2.5 text-sm"></div>
     <div><label class="block text-sm mb-1">Nombre de salariés</label>
      <input type="number" name="nb_salaries" min="0" value="{{ f.nb_salaries }}" class="w-full border rounded-lg p-2.5 text-sm"></div>
-    <div><label class="block text-sm mb-1">Salaire brut mensuel moyen d'un salarié (FCFA)</label>
-     <input type="number" name="salaire_staff" min="0" value="{{ f.salaire_staff }}" class="w-full border rounded-lg p-2.5 text-sm"></div>
+    {{ money('salaire_staff', "Salaire brut mensuel moyen d'un salarié (FCFA)", f.salaire_staff, '', False, False) }}
    </div></details>
   <button type="submit" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">Calculer</button>
  </form>
 
+ <div id="dernier" class="hidden"></div>
+
  {% if r %}
+ <div id="resultats">
  <div class="bg-white p-5 rounded-xl shadow border-l-4 border-emerald-600 mb-4">
   <span class="text-xs font-bold uppercase text-emerald-700 bg-emerald-50 px-2 py-1 rounded">Statut Conseillé</span>
   <h2 class="text-xl font-bold mt-2">{{ r.statut_nom }}</h2>
   <p class="text-sm text-slate-600 mt-1">{{ r.desc }}</p></div>
 
+ {% if r.alerte %}
+ <div class="bg-amber-50 border border-amber-300 text-amber-900 rounded-xl p-4 mb-4 text-sm">
+  <b>Bon à savoir :</b> avec {{ r.alerte.reco }}, vous payez <b>{{ r.alerte.economie|f }}</b> d'impôt de plus par an qu'avec {{ r.alerte.alt }} (économie possible).
+  {% if r.alerte.protection %}Cet écart est le prix de la protection de votre patrimoine personnel. Si ce risque est faible pour vous, l'EI au CGU peut suffire.{% endif %}
+ </div>
+ {% endif %}
+
  <div class="bg-white p-5 rounded-xl shadow space-y-2 text-sm mb-4">
-  <h3 class="font-bold text-base border-b pb-2 mb-2">Estimation Fiscale ({{ 'CGU' if r.regime=='CGU' else 'Régime du Réel' }})</h3>
+  <h3 class="font-bold text-base border-b pb-2 mb-2">Estimation Fiscale ({{ 'CGU' if r.regime=='CGU' else 'Régime du Réel' }}) {{ tip('CGU' if r.regime=='CGU' else 'IMF') }}</h3>
   <div class="flex justify-between"><span>Chiffre d'Affaires :</span><b>{{ r.ca|f }}</b></div>
   <div class="flex justify-between"><span>Bénéfice brut (CA - charges) :</span><b>{{ r.benefice|f }}</b></div>
-  <div class="flex justify-between text-red-600"><span>{{ r.principal.label_impot }} :</span><b>- {{ r.principal.impot|f }}</b></div>
-  <div class="flex justify-between"><span>TVA (18%) :</span><b>{{ 'Oui (CA > 50M FCFA)' if r.tva else 'Non (Franchise)' }}</b></div>
-  <div class="flex justify-between text-base pt-2 border-t text-emerald-700"><span>Net après impôt{{ ' (salaires inclus)' if r.gerant or r.staff }} :</span><b>{{ r.principal.dispo|f }}</b></div>
+  <div>
+   <div class="flex justify-between gap-2 text-red-600"><span>{{ r.principal.label }} :</span><b class="whitespace-nowrap">- {{ r.principal.impot|f }}</b></div>
+   <div class="text-xs text-slate-500">{{ r.principal.detail }}</div></div>
+  <div class="flex justify-between"><span>TVA (18 %) {{ tip('FRANCHISE') }} :</span><b>{{ 'Oui (CA > 50 M)' if r.tva else 'Non (franchise)' }}</b></div>
+  <div class="flex justify-between text-base pt-2 border-t text-emerald-700"><span>Net après impôt{{ ' (salaires inclus)' if r.gerant or r.staff }} :</span><b class="whitespace-nowrap">{{ r.principal.dispo|f }}</b></div>
  </div>
 
  <div class="bg-white p-5 rounded-xl shadow text-sm mb-4">
@@ -69,19 +101,122 @@
    <tr class="font-bold"><td class="p-1">Disponible pour vous*</td><td class="p-1 text-right">-</td><td class="p-1 text-right">{{ r.b.dispo|f }}</td></tr>
    {% endif %}
   </table></div>
-  <p class="text-xs text-slate-500 mt-2">Réel : {{ r.b.label_impot }}. *Net du gérant + résultat après impôt, avant impôt sur dividendes. CA supposé hors TVA.</p></div>
+  <p class="text-xs text-slate-500 mt-2">*Net du gérant + résultat après impôt, avant impôt sur dividendes. CA supposé hors TVA.</p></div>
 
- {% for nom, s in [('Gérant', r.gerant), ('Salariés (total ' ~ r.nb ~ ')', r.staff)] if s %}
- <div class="bg-white p-5 rounded-xl shadow text-sm mb-4">
-  <h3 class="font-bold text-base border-b pb-2 mb-2">{{ nom }} - détail annuel</h3>
-  <ul class="space-y-1">
-   <li>Brut : {{ s.brut|f }}</li><li>Cotisations salariales (IPRES) : {{ s.cotis_sal|f }}</li>
-   <li>IR : {{ s.ir|f }} - TRIMF : {{ s.trimf|f }}</li><li><b>Net perçu : {{ s.net|f }}</b></li>
-   <li>Charges patronales (IPRES, CSS, CFCE) : {{ s.charges_emp|f }}</li>
-   <li><b>Coût total employeur : {{ s.cout|f }}</b></li></ul></div>
- {% endfor %}
-
- <p class="text-xs text-amber-700 bg-amber-50 rounded-lg p-3 mb-4">Estimation indicative, hors quotient familial détaillé, abattements et exonérations. Taux et seuils (CGU, TRIMF, CFCE) à valider auprès de la DGID ou d'un expert-comptable.</p>
- <button onclick="window.print()" class="print:hidden w-full border border-emerald-600 text-emerald-700 bg-white rounded-lg p-3 font-semibold mb-6">Imprimer / Enregistrer en PDF</button>
+ {% if r.gerant or r.staff %}
+ <details class="bg-white p-5 rounded-xl shadow text-sm mb-4">
+  <summary class="font-bold text-base cursor-pointer">Détail des cotisations et impôts sur salaires</summary>
+  {% for nom, s in [('Gérant', r.gerant), ('Salariés (total ' ~ r.nb ~ ')', r.staff)] if s %}
+  <h4 class="font-semibold mt-4 mb-1">{{ nom }} - par an</h4>
+  <table class="w-full">
+   <tr class="border-b"><td class="p-1">Salaire brut</td><td class="p-1 text-right">{{ s.brut|f }}</td></tr>
+   <tr class="border-b"><td class="p-1">IPRES part salarié {{ tip('IPRES') }}</td><td class="p-1 text-right">{{ s.ipres_sal|f }}</td></tr>
+   <tr class="border-b"><td class="p-1">IR (impôt sur le revenu)</td><td class="p-1 text-right">{{ s.ir|f }}</td></tr>
+   <tr class="border-b"><td class="p-1">TRIMF {{ tip('TRIMF') }}</td><td class="p-1 text-right">{{ s.trimf|f }}</td></tr>
+   <tr class="border-b font-semibold"><td class="p-1">Net perçu</td><td class="p-1 text-right">{{ s.net|f }}</td></tr>
+   <tr class="border-b"><td class="p-1">IPRES part employeur</td><td class="p-1 text-right">{{ s.ipres_emp|f }}</td></tr>
+   <tr class="border-b"><td class="p-1">CSS allocations familiales {{ tip('CSS') }}</td><td class="p-1 text-right">{{ s.css_pf|f }}</td></tr>
+   <tr class="border-b"><td class="p-1">CSS accidents du travail</td><td class="p-1 text-right">{{ s.css_at|f }}</td></tr>
+   <tr class="border-b"><td class="p-1">CFCE {{ tip('CFCE') }}</td><td class="p-1 text-right">{{ s.cfce|f }}</td></tr>
+   <tr class="font-semibold"><td class="p-1">Coût total employeur</td><td class="p-1 text-right">{{ s.cout|f }}</td></tr>
+  </table>
+  {% endfor %}
+ </details>
  {% endif %}
-</div></body></html>
+
+ <div class="bg-white p-5 rounded-xl shadow text-sm mb-4">
+  <h3 class="font-bold text-base border-b pb-2 mb-2">Frais initiaux de création (estimation)</h3>
+  <div class="flex justify-between"><span>Frais officiels (greffe, RCCM, publication)</span><b class="text-right">{{ r.frais.officiel[0]|f }} - {{ r.frais.officiel[1]|f }}</b></div>
+  <div class="flex justify-between mt-1"><span>Notaire</span><b class="text-right">{% if r.frais.notaire[1] == 0 %}non requis{% else %}{{ r.frais.notaire[0]|f }} - {{ r.frais.notaire[1]|f }}{% endif %}</b></div>
+  <div class="flex justify-between mt-1"><span>NINEA {{ tip('NINEA') }}</span><b>gratuit</b></div>
+  <div class="flex justify-between mt-2 pt-2 border-t text-emerald-700"><span>Total estimé</span><b class="text-right">{{ r.frais.total[0]|f }} - {{ r.frais.total[1]|f }}</b></div>
+  <p class="text-xs text-slate-500 mt-2">Ordres de grandeur issus de sources non officielles, à confirmer auprès du guichet APIX.</p></div>
+
+ {% if r.nouvelle %}<p class="text-xs text-slate-600 bg-white rounded-lg p-3 mb-4">Entreprise de moins de 3 ans : IMF et CFCE sont considérés comme exonérés. Conditions exactes à confirmer auprès de la DGID.</p>{% endif %}
+ <p class="text-xs text-amber-700 bg-amber-50 rounded-lg p-3 mb-4">Estimation indicative, hors quotient familial détaillé, abattements et exonérations. Taux et seuils (CGU, TRIMF, CFCE) à valider auprès de la DGID ou d'un expert-comptable.</p>
+ <button type="button" onclick="window.print()" class="print:hidden w-full border border-emerald-600 text-emerald-700 bg-white rounded-lg p-3 font-semibold mb-6">Imprimer / Enregistrer en PDF</button>
+ </div>
+ {% endif %}
+</section>
+
+<section id="tab-demarches" class="hidden print:hidden">
+ <div class="bg-white p-5 rounded-xl shadow mb-4 text-sm">
+  <h2 class="font-bold text-base mb-1">Pièces à réunir {{ tip('NINEA') }} {{ tip('RCCM') }}</h2>
+  <p class="text-slate-500 mb-3">Liste indicative, cochée sur ce téléphone. Confirmez les pièces exactes auprès du guichet APIX.</p>
+  {% for titre, items in checklists %}
+  <h3 class="font-semibold mt-3 mb-1">{{ titre }}</h3>
+  {% for id, txt in items %}
+  <label class="flex items-start gap-2 py-1"><input type="checkbox" class="chk w-4 h-4 mt-0.5" data-id="{{ id }}"><span>{{ txt }}</span></label>
+  {% endfor %}{% endfor %}
+  <button type="button" id="resetChk" class="mt-3 text-xs text-slate-500 underline">Tout décocher</button>
+ </div>
+ <div class="bg-white p-5 rounded-xl shadow mb-6 text-sm">
+  <h2 class="font-bold text-base mb-2">Guichets et liens utiles</h2>
+  {% for nom, url, desc in liens %}
+  <a href="{{ url }}" target="_blank" rel="noopener" class="block border rounded-lg p-3 mb-2"><b class="text-emerald-700">{{ nom }}</b><br><span class="text-xs text-slate-500">{{ desc }}</span></a>
+  {% endfor %}
+ </div>
+</section>
+</div>
+
+<div id="modal" class="hidden fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-4 print:hidden">
+ <div class="bg-white rounded-xl p-5 w-full max-w-md">
+  <h3 id="mTitre" class="font-bold mb-2"></h3><p id="mTexte" class="text-sm text-slate-700"></p>
+  <button type="button" id="mClose" class="mt-4 w-full bg-emerald-600 text-white rounded-lg py-2.5 font-semibold">Compris</button></div></div>
+
+<script>
+const GLOSS = {{ g|tojson }};
+const $ = (s, r=document) => r.querySelector(s), $$ = (s, r=document) => [...r.querySelectorAll(s)];
+const store = {get(k){try{return localStorage.getItem(k)}catch(e){return null}}, set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+const fmt = v => String(v).replace(/\D/g,'').replace(/\B(?=(\d{3})+(?!\d))/g,' ');
+const hasResult = !!$('#resultats');
+
+// Onglets
+function showTab(t){
+  $('#tab-simu').classList.toggle('hidden', t!=='simu'); $('#tab-demarches').classList.toggle('hidden', t!=='demarches');
+  $$('.tab').forEach(b => { const on = b.dataset.tab===t;
+    b.className = 'tab flex-1 py-2.5 rounded-lg font-semibold text-sm ' + (on ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 border'); });
+  store.set('sen_tab', t);
+}
+$$('.tab').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+showTab(hasResult ? 'simu' : (store.get('sen_tab') || 'simu'));
+
+// Montants avec espaces + ajouts rapides
+function reformat(){ $$('.money').forEach(i => i.value = fmt(i.value)); }
+document.addEventListener('input', e => { if (e.target.classList.contains('money')) e.target.value = fmt(e.target.value); saveForm(); });
+document.addEventListener('change', saveForm);
+document.addEventListener('click', e => {
+  const t = e.target.closest('button'); if (!t) return;
+  if (t.dataset.add) { const i = $('#'+t.dataset.target); i.value = fmt((parseInt(i.value.replace(/\s/g,''))||0) + parseInt(t.dataset.add)); saveForm(); }
+  if (t.dataset.clear) { $('#'+t.dataset.clear).value = ''; saveForm(); }
+  if (t.classList.contains('tipbtn')) { const g = GLOSS[t.dataset.k]; if (g) { $('#mTitre').textContent = g[0]; $('#mTexte').textContent = g[1]; $('#modal').classList.remove('hidden'); } }
+});
+$('#mClose').onclick = () => $('#modal').classList.add('hidden');
+$('#modal').onclick = e => { if (e.target.id === 'modal') $('#modal').classList.add('hidden'); };
+
+// Sauvegarde / restauration du formulaire
+function saveForm(){ const d = {}; $$('#form input, #form select').forEach(i => { if (!i.name) return; d[i.name] = i.type==='checkbox' ? i.checked : i.value; }); store.set('sen_form', JSON.stringify(d)); }
+function restoreForm(){ let d; try { d = JSON.parse(store.get('sen_form')||'null'); } catch(e) {} if (!d) return;
+  $$('#form input, #form select').forEach(i => { if (!(i.name in d)) return; if (i.type==='checkbox') i.checked = !!d[i.name]; else i.value = d[i.name]; }); }
+if (!hasResult) restoreForm();
+reformat();
+
+// Dernier bilan hors ligne
+if (hasResult) store.set('sen_last', JSON.stringify({html: $('#resultats').innerHTML, date: new Date().toLocaleString('fr-FR')}));
+function showLast(){ let d; try { d = JSON.parse(store.get('sen_last')||'null'); } catch(e) {} const box = $('#dernier');
+  if (d && !hasResult) { box.innerHTML = '<p class="text-xs text-slate-500 mb-2">Dernier bilan du ' + d.date + '</p>' + d.html; box.classList.remove('hidden'); } }
+function updateOnline(){ const off = !navigator.onLine; $('#offline').classList.toggle('hidden', !off); if (off) showLast(); }
+window.addEventListener('online', updateOnline); window.addEventListener('offline', updateOnline); updateOnline();
+$('#form').addEventListener('submit', e => { if (!navigator.onLine) { e.preventDefault(); updateOnline(); return; } saveForm(); });
+
+// Checklist
+let chk = {}; try { chk = JSON.parse(store.get('sen_chk')||'{}'); } catch(e) {}
+$$('.chk').forEach(c => { c.checked = !!chk[c.dataset.id]; c.onchange = () => { chk[c.dataset.id] = c.checked; store.set('sen_chk', JSON.stringify(chk)); }; });
+$('#resetChk').onclick = () => { chk = {}; store.set('sen_chk', '{}'); $$('.chk').forEach(c => c.checked = false); };
+
+// PWA
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+let promptEvt; window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); promptEvt = e; $('#installBtn').classList.remove('hidden'); });
+$('#installBtn').onclick = async () => { if (!promptEvt) return; promptEvt.prompt(); await promptEvt.userChoice; promptEvt = null; $('#installBtn').classList.add('hidden'); };
+</script>
+</body></html>

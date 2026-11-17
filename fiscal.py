@@ -1,5 +1,6 @@
 # fiscal.py - logique métier (aucune dépendance à Flask)
-from params import P
+import re
+from params import P, FRAIS
 
 
 def fcfa(n):
@@ -7,10 +8,8 @@ def fcfa(n):
 
 
 def entier(v, defaut=0):
-    try:
-        return max(0, int(float(str(v).replace(" ", "").replace(",", "."))))
-    except (ValueError, TypeError):
-        return defaut
+    chiffres = re.sub(r"\D", "", str(v or ""))
+    return int(chiffres) if chiffres else defaut
 
 
 STATUTS = {
@@ -29,23 +28,32 @@ def recommander_statut(associes, ca, protection, investisseurs):
 
 def impot_cgu(ca, activite):
     taux, mini = P["CGU"][activite]
-    return max(mini, ca * taux)
+    impot = max(mini, ca * taux)
+    nom = "Commerce" if activite == "commerce" else "Services"
+    detail = f"(minimum de perception : {fcfa(mini)})" if impot == mini else f"({taux * 100:g} % du chiffre d'affaires)"
+    return {"impot": impot, "label": f"CGU {nom}", "detail": detail}
 
 
-def impot_reel(ca, charges_deductibles):
-    benefice = ca - charges_deductibles
+def impot_reel(ca, charges, exo_imf=False):
+    benefice = ca - charges
     is_ = max(0, benefice) * P["IS_TAUX"]
-    imf = min(max(ca * P["IMF_TAUX"], P["IMF_MIN"]), P["IMF_MAX"])
-    return {"benefice": benefice, "is": is_, "imf": imf,
-            "impot": max(is_, imf), "base": "IS" if is_ >= imf else "IMF"}
+    imf_theo = min(max(ca * P["IMF_TAUX"], P["IMF_MIN"]), P["IMF_MAX"])
+    imf = 0 if exo_imf else imf_theo
+    if imf > is_:
+        label, detail = "Impôt dû (IMF minimum)", f"(IS calculé : {fcfa(is_)})"
+    else:
+        label = f"Impôt dû (IS {P['IS_TAUX'] * 100:g} %)"
+        detail = ("(IMF exonéré : entreprise de moins de 3 ans)" if exo_imf
+                  else f"(IMF minimum : {fcfa(imf_theo)})")
+    return {"benefice": benefice, "impot": max(is_, imf), "label": label, "detail": detail}
 
 
 def ir_annuel(base, parts):
-    par_part, reste, prec, total = base / parts, base / parts, 0, 0.0
+    reste, prec, total = base / parts, 0, 0.0
     for plafond, taux in P["IR_BAREME"]:
         tranche = reste if plafond is None else min(reste, plafond - prec)
         total += max(0, tranche) * taux
-        if plafond is None or par_part <= plafond:
+        if plafond is None or reste <= plafond - prec:
             break
         reste -= tranche
         prec = plafond
@@ -58,39 +66,48 @@ def trimf(brut_annuel):
             return montant
 
 
-def simuler_salaire(brut_m, cadre, parts):
-    """Coût et net annuels pour UN salarié (12 mois)."""
+def simuler_salaire(brut_m, cadre, parts, nouvelle=False):
+    """Coût et net annuels pour UN salarié (12 mois), avec le détail des cotisations."""
     if brut_m <= 0:
         return None
     rg = min(brut_m, P["IPRES_RG_PLAFOND"])
     rc = max(0, min(brut_m, P["IPRES_RC_PLAFOND"]) - P["IPRES_RG_PLAFOND"]) if cadre else 0
     css = min(brut_m, P["CSS_PLAFOND"])
-    sal_m = rg * P["IPRES_RG_SAL"] + rc * P["IPRES_RC_SAL"]
-    emp_m = (rg * P["IPRES_RG_EMP"] + rc * P["IPRES_RC_EMP"]
-             + css * (P["CSS_PF_EMP"] + P["CSS_AT_EMP"]) + brut_m * P["CFCE_EMP"])
-    brut_a, cotis_sal = brut_m * 12, sal_m * 12
-    base = brut_a - cotis_sal
+    cfce_taux = 0 if (nouvelle and P["CFCE_EXO_NOUVELLE"]) else P["CFCE_EMP"]
+    ipres_sal = (rg * P["IPRES_RG_SAL"] + rc * P["IPRES_RC_SAL"]) * 12
+    ipres_emp = (rg * P["IPRES_RG_EMP"] + rc * P["IPRES_RC_EMP"]) * 12
+    css_pf, css_at = css * P["CSS_PF_EMP"] * 12, css * P["CSS_AT_EMP"] * 12
+    cfce = brut_m * cfce_taux * 12
+    brut_a = brut_m * 12
+    base = brut_a - ipres_sal
     base -= min(base * P["IR_FRAIS_PRO"], P["IR_FRAIS_PRO_MAX"])
     ir, tr = ir_annuel(max(0, base), parts), trimf(brut_a)
-    return {"brut": brut_a, "cotis_sal": cotis_sal, "ir": ir, "trimf": tr,
-            "net": brut_a - cotis_sal - ir - tr, "charges_emp": emp_m * 12,
-            "cout": brut_a + emp_m * 12}
+    charges_emp = ipres_emp + css_pf + css_at + cfce
+    return {"brut": brut_a, "cotis_sal": ipres_sal, "ipres_sal": ipres_sal, "ipres_emp": ipres_emp,
+            "css_pf": css_pf, "css_at": css_at, "cfce": cfce, "ir": ir, "trimf": tr,
+            "net": brut_a - ipres_sal - ir - tr, "charges_emp": charges_emp, "cout": brut_a + charges_emp}
 
 
 def multiplier(s, n):
     return {k: v * n for k, v in s.items()} if s and n > 1 else s
 
 
+def frais_creation(statut):
+    f = FRAIS[statut]
+    return {"officiel": f["officiel"], "notaire": f["notaire"],
+            "total": (f["officiel"][0] + f["notaire"][0], f["officiel"][1] + f["notaire"][1])}
+
+
 def simuler(f):
     associes = 2 if f["associes"] == "2" else 1
     activite = f["activite"] if f["activite"] in P["CGU"] else "services"
     ca, charges = entier(f["ca"]), entier(f["charges"])
-    protection, invest = f["protection"], f["investisseurs"]
+    protection, invest, nouvelle = f["protection"], f["investisseurs"], f["nouvelle"]
     parts = max(1.0, min(5.0, float(f["parts"] or 1)))
     nb = entier(f["nb_salaries"])
 
-    gerant = simuler_salaire(entier(f["salaire_gerant"]), f["cadre"], parts)
-    staff = multiplier(simuler_salaire(entier(f["salaire_staff"]), False, 1), nb)
+    gerant = simuler_salaire(entier(f["salaire_gerant"]), f["cadre"], parts, nouvelle)
+    staff = multiplier(simuler_salaire(entier(f["salaire_staff"]), False, 1, nouvelle), nb)
     cout_staff = staff["cout"] if staff else 0
     cout_gerant = gerant["cout"] if gerant else 0
 
@@ -100,23 +117,30 @@ def simuler(f):
     # Scénario A : EI + CGU (le gérant n'est pas salarié)
     a = {"titre": "EI au CGU", "ok": ca <= P["SEUIL_CGU_TVA"]}
     if a["ok"]:
-        a["impot"] = impot_cgu(ca, activite)
-        a["label_impot"] = "CGU " + ("Commerce" if activite == "commerce" else "Services")
-        a["sociaux"] = (staff["charges_emp"] if staff else 0)
-        a["perso"] = (staff["ir"] + staff["trimf"]) if staff else 0
-        a["dispo"] = ca - charges - cout_staff - a["impot"]
+        c = impot_cgu(ca, activite)
+        a.update(impot=c["impot"], label=c["label"], detail=c["detail"],
+                 sociaux=staff["charges_emp"] if staff else 0,
+                 perso=(staff["ir"] + staff["trimf"]) if staff else 0,
+                 dispo=ca - charges - cout_staff - c["impot"])
     # Scénario B : SUARL / SARL au réel (le gérant se verse un salaire)
-    r = impot_reel(ca, charges + cout_gerant + cout_staff)
-    b = {"titre": "SUARL au réel", "ok": True, "impot": r["impot"],
-         "label_impot": f"{r['base']} (IS {fcfa(r['is'])} / IMF {fcfa(r['imf'])})",
-         "label_court": r['base'],
-         "sociaux": (gerant["charges_emp"] if gerant else 0) + (staff["charges_emp"] if staff else 0),
-         "perso": sum((s["ir"] + s["trimf"]) for s in (gerant, staff) if s)}
-    b["dispo"] = (gerant["net"] if gerant else 0) + r["benefice"] - r["impot"]
+    r = impot_reel(ca, charges + cout_gerant + cout_staff, exo_imf=nouvelle and P["IMF_EXO_NOUVELLE"])
+    b = {"titre": "SUARL au réel", "ok": True, "impot": r["impot"], "label": r["label"], "detail": r["detail"],
+         "sociaux": sum(s["charges_emp"] for s in (gerant, staff) if s),
+         "perso": sum(s["ir"] + s["trimf"] for s in (gerant, staff) if s),
+         "dispo": (gerant["net"] if gerant else 0) + r["benefice"] - r["impot"]}
 
     principal = a if regime == "CGU" else b
+    alerte = None
+    if associes == 1 and a["ok"]:
+        autre = b if principal is a else a
+        ecart = principal["impot"] - autre["impot"]
+        if ecart >= max(200_000, 0.2 * autre["impot"]):
+            alerte = {"reco": principal["titre"], "alt": autre["titre"], "economie": ecart,
+                      "protection": principal is b}
+
     return {"statut": statut, "statut_nom": STATUTS[statut][0], "desc": STATUTS[statut][1],
-            "principal": principal, "benefice": max(0, ca - charges), "regime": regime, "tva": ca > P["SEUIL_CGU_TVA"],
-            "ca": ca, "charges": charges, "a": a, "b": b,
-            "gerant": gerant, "staff": staff, "nb": nb,
-            "meilleur": ("A" if a["ok"] and a["dispo"] >= b["dispo"] else "B")}
+            "regime": regime, "principal": principal, "tva": ca > P["SEUIL_CGU_TVA"],
+            "ca": ca, "charges": charges, "benefice": max(0, ca - charges),
+            "a": a, "b": b, "gerant": gerant, "staff": staff, "nb": nb, "nouvelle": nouvelle,
+            "meilleur": "A" if a["ok"] and a["dispo"] >= b["dispo"] else "B",
+            "alerte": alerte, "frais": frais_creation(statut)}
