@@ -8,6 +8,7 @@ P = {
     "CGU": {"commerce": (0.02, 25_000), "services": (0.05, 30_000)},
     "IS_TAUX": 0.30,
     "IMF_TAUX": 0.005, "IMF_MIN": 500_000, "IMF_MAX": 5_000_000,
+    "SMIG_MENSUEL": 64_223,  # valeur indicative fournie, à vérifier (décret en vigueur)
     "SAS_CA": 200_000_000,  # seuil arbitraire pour suggérer une SAS
     # --- Charges sociales (mensuel) ---
     "IPRES_RG_PLAFOND": 360_000, "IPRES_RG_SAL": 0.056, "IPRES_RG_EMP": 0.084,
@@ -35,6 +36,7 @@ FRAIS = {
     "SUARL": {"officiel": (25_000, 100_000), "notaire": (0, 100_000)},
     "SARL":  {"officiel": (25_000, 100_000), "notaire": (50_000, 150_000)},
     "SAS":   {"officiel": (25_000, 100_000), "notaire": (50_000, 150_000)},
+    "SASU":  {"officiel": (25_000, 100_000), "notaire": (50_000, 150_000)},
 }
 
 # Infobulles (?) : explications simples
@@ -59,6 +61,9 @@ GLOSSAIRE = {
     "CFCE": ("CFCE",
              "Contribution payée par l'employeur sur les salaires versés (3 % dans ce simulateur). "
              "Les entreprises récentes peuvent en être exonérées."),
+    "NINEA_RCCM": ("NINEA et RCCM",
+                   "Le RCCM (Registre du Commerce et du Crédit Mobilier) est l'immatriculation officielle de votre entreprise. "
+                   "Le NINEA est son numéro d'identification, gratuit. Le guichet unique de l'APIX délivre les deux dans le même dépôt."),
     "NINEA": ("NINEA", "Le numéro d'identification de votre entreprise, gratuit. Il est délivré avec l'immatriculation au guichet unique de l'APIX."),
     "RCCM": ("RCCM", "Le Registre du Commerce et du Crédit Mobilier : l'immatriculation officielle de votre entreprise."),
 }
@@ -94,6 +99,6 @@ LIENS = [
     ("APIX", "https://www.investinsenegal.com", "Agence de promotion des investissements"),
     ("DER/FJ", "https://www.der.sn", "Financement pour jeunes et femmes entrepreneurs"),
     ("ADEPME", "https://www.adepme.sn", "Accompagnement des PME"),
-    ("Sénégal PME", "https://www.google.com/search?q=S%C3%A9n%C3%A9gal+PME+portail+officiel", "Recherche (lien officiel non vérifié)"),
+    ("Sénégal Services", "https://senegalservices.sn", "Portail officiel des démarches administratives au Sénégal"),
     ("DGID (impôts)", "https://www.dgid.sn", "Code général des impôts et déclarations"),
 ]

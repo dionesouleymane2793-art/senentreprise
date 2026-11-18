@@ -16,12 +16,15 @@ STATUTS = {
     "EI": ("Entreprise Individuelle (EI)", "Création rapide au BCE (APIX) sans capital minimum. Attention : patrimoine personnel non séparé."),
     "SUARL": ("SARL Unipersonnelle (SUARL)", "Idéal pour entreprendre seul tout en protégeant vos biens personnels. Capital libre."),
     "SARL": ("SARL (Société à Responsabilité Limitée)", "Structure recommandée à plusieurs associés au Sénégal. Protège le patrimoine personnel."),
-    "SAS": ("SAS (Société par Actions Simplifiée)", "Souple et adaptée à l'entrée d'investisseurs ou à un fort CA. Statuts très librement organisés."),
+    "SASU": ("SASU (Société par Actions Simplifiée Unipersonnelle)", "Permet de démarrer seul tout en facilitant l'entrée future d'investisseurs et le passage en SAS. Statuts très librement organisés, responsabilité limitée aux apports."),
+    "SAS": ("SAS (Société par Actions Simplifiée)", "Souple pour accueillir des investisseurs : statuts très librement organisés, entrée facilitée de nouveaux associés. Adaptée aussi à un fort chiffre d'affaires."),
 }
 
 
 def recommander_statut(associes, ca, protection, investisseurs):
     if associes == 1:
+        if investisseurs:
+            return "SASU"
         return "SUARL" if (protection or ca >= P["SEUIL_CGU_TVA"]) else "EI"
     return "SAS" if (investisseurs or ca >= P["SAS_CA"]) else "SARL"
 
@@ -105,42 +108,62 @@ def simuler(f):
     protection, invest, nouvelle = f["protection"], f["investisseurs"], f["nouvelle"]
     parts = max(1.0, min(5.0, float(f["parts"] or 1)))
     nb = entier(f["nb_salaries"])
+    brut_gerant, brut_staff = entier(f["salaire_gerant"]), entier(f["salaire_staff"])
 
-    gerant = simuler_salaire(entier(f["salaire_gerant"]), f["cadre"], parts, nouvelle)
-    staff = multiplier(simuler_salaire(entier(f["salaire_staff"]), False, 1, nouvelle), nb)
+    gerant = simuler_salaire(brut_gerant, f["cadre"], parts, nouvelle)
+    staff = multiplier(simuler_salaire(brut_staff, False, 1, nouvelle), nb)
     cout_staff = staff["cout"] if staff else 0
     cout_gerant = gerant["cout"] if gerant else 0
+    smig = any(0 < v < P["SMIG_MENSUEL"] for v in (brut_gerant, brut_staff))
 
     statut = recommander_statut(associes, ca, protection, invest)
     regime = "CGU" if statut == "EI" and ca <= P["SEUIL_CGU_TVA"] else "Réel"
+    statut_b = statut if statut != "EI" else "SUARL"
 
-    # Scénario A : EI + CGU (le gérant n'est pas salarié)
-    a = {"titre": "EI au CGU", "ok": ca <= P["SEUIL_CGU_TVA"]}
+    # Colonne A : EI au CGU. Le dirigeant n'est pas salarié : aucun IPRES/CSS/IR/TRIMF sur
+    # salaire_gerant, seulement sur les employés. Impossible à plusieurs associés.
+    a = {"titre": "EI au CGU", "ok": associes == 1 and ca <= P["SEUIL_CGU_TVA"]}
     if a["ok"]:
         c = impot_cgu(ca, activite)
         a.update(impot=c["impot"], label=c["label"], detail=c["detail"],
                  sociaux=staff["charges_emp"] if staff else 0,
                  perso=(staff["ir"] + staff["trimf"]) if staff else 0,
                  dispo=ca - charges - cout_staff - c["impot"])
-    # Scénario B : SUARL / SARL au réel (le gérant se verse un salaire)
+    # Colonne B : société au réel (le gérant se verse un salaire)
     r = impot_reel(ca, charges + cout_gerant + cout_staff, exo_imf=nouvelle and P["IMF_EXO_NOUVELLE"])
-    b = {"titre": "SUARL au réel", "ok": True, "impot": r["impot"], "label": r["label"], "detail": r["detail"],
+    net_gerant = gerant["net"] if gerant else 0
+    resultat = r["benefice"] - r["impot"]
+    b = {"titre": f"{statut_b} au réel", "ok": True, "impot": r["impot"], "label": r["label"], "detail": r["detail"],
          "sociaux": sum(s["charges_emp"] for s in (gerant, staff) if s),
          "perso": sum(s["ir"] + s["trimf"] for s in (gerant, staff) if s),
-         "dispo": (gerant["net"] if gerant else 0) + r["benefice"] - r["impot"]}
+         "net_gerant": net_gerant, "resultat": resultat, "dispo": net_gerant + resultat}
 
     principal = a if regime == "CGU" else b
     alerte = None
-    if associes == 1 and a["ok"]:
+    if a["ok"]:
         autre = b if principal is a else a
         ecart = principal["impot"] - autre["impot"]
         if ecart >= max(200_000, 0.2 * autre["impot"]):
             alerte = {"reco": principal["titre"], "alt": autre["titre"], "economie": ecart,
-                      "protection": principal is b}
+                      "raison": "investisseurs" if statut == "SASU" else "protection"}
+
+    societes = None
+    if associes == 2:
+        societes = {"impot": b["impot"], "SARL": frais_creation("SARL"), "SAS": frais_creation("SAS")}
+
+    partage = "\n".join([
+        "SenEntreprise - Mon bilan",
+        f"Statut recommandé : {STATUTS[statut][0]}",
+        f"Régime fiscal : {'CGU' if regime == 'CGU' else 'Réel (IS / IMF)'}",
+        f"CA estimé : {fcfa(ca)}",
+        f"Impôt annuel estimé : {fcfa(principal['impot'])}",
+        f"Net disponible : {fcfa(principal['dispo'])}",
+        "(Estimation indicative)"])
 
     return {"statut": statut, "statut_nom": STATUTS[statut][0], "desc": STATUTS[statut][1],
-            "regime": regime, "principal": principal, "tva": ca > P["SEUIL_CGU_TVA"],
+            "associes": associes, "regime": regime, "principal": principal, "tva": ca > P["SEUIL_CGU_TVA"],
             "ca": ca, "charges": charges, "benefice": max(0, ca - charges),
             "a": a, "b": b, "gerant": gerant, "staff": staff, "nb": nb, "nouvelle": nouvelle,
             "meilleur": "A" if a["ok"] and a["dispo"] >= b["dispo"] else "B",
-            "alerte": alerte, "frais": frais_creation(statut)}
+            "alerte": alerte, "frais": frais_creation(statut), "smig": smig,
+            "smig_valeur": P["SMIG_MENSUEL"], "societes": societes, "partage": partage}

@@ -9,7 +9,7 @@ from params import CHECKLISTS, GLOSSAIRE, LIENS
 app = Flask(__name__, template_folder=".")
 app.template_filter("f")(fcfa)
 
-SW_VERSION = "v2"
+SW_VERSION = "v3"
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -26,6 +26,11 @@ def index():
         r = simuler(f) if request.method == "POST" else None
     except ValueError:
         f["parts"], r = "1", None
+    if r:
+        url = request.url_root.rstrip("/")
+        if "localhost" not in url and "127.0.0.1" not in url:
+            url = url.replace("http://", "https://")
+        r["partage"] += "\nSimulez le vôtre : " + url
     return render_template("index.html", f=f, r=r, g=GLOSSAIRE, checklists=CHECKLISTS, liens=LIENS)
 
 

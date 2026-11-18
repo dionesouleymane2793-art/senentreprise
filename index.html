@@ -10,10 +10,10 @@
 {% macro money(name, label, val, ph='', req=False, quick=True) %}
 <div><div class="flex items-center gap-1 mb-1"><label class="block text-sm font-semibold" for="{{ name }}">{{ label }}</label></div>
  <input type="text" inputmode="numeric" autocomplete="off" id="{{ name }}" name="{{ name }}" {{ 'required' if req }} value="{{ val }}" placeholder="{{ ph }}" class="money w-full border rounded-lg p-2.5 text-sm">
- {% if quick %}<div class="flex gap-2 mt-2">
-  {% for n, t in [(1000000,'+1M'),(5000000,'+5M'),(10000000,'+10M')] %}
-  <button type="button" data-add="{{ n }}" data-target="{{ name }}" class="quick flex-1 border border-emerald-600 text-emerald-700 rounded-lg py-1.5 text-sm font-semibold">{{ t }}</button>{% endfor %}
-  <button type="button" data-clear="{{ name }}" class="quick border border-slate-300 text-slate-500 rounded-lg px-3 py-1.5 text-sm">0</button>
+ {% if quick %}<div class="flex flex-wrap gap-2 mt-2">
+  {% for n, t in [(500000,'+500k'),(1000000,'+1M'),(5000000,'+5M'),(10000000,'+10M')] %}
+  <button type="button" data-add="{{ n }}" data-target="{{ name }}" class="quick flex-1 min-w-[3.5rem] border border-emerald-600 text-emerald-700 rounded-lg py-1.5 text-sm font-semibold">{{ t }}</button>{% endfor %}
+  <button type="button" data-clear="{{ name }}" class="quick border border-red-300 text-red-600 rounded-lg px-3 py-1.5 text-sm">✕ Effacer</button>
  </div>{% endif %}</div>
 {% endmacro %}
 <body class="bg-slate-100 text-slate-800 p-4"><div class="max-w-3xl mx-auto">
@@ -67,10 +67,14 @@
   <h2 class="text-xl font-bold mt-2">{{ r.statut_nom }}</h2>
   <p class="text-sm text-slate-600 mt-1">{{ r.desc }}</p></div>
 
+ {% if r.smig %}
+ <div class="bg-yellow-50 border border-yellow-300 text-yellow-900 rounded-xl p-3 mb-4 text-sm">⚠️ Attention : un salaire saisi est inférieur au SMIG indicatif au Sénégal (environ {{ r.smig_valeur|f }}/mois).</div>
+ {% endif %}
+
  {% if r.alerte %}
  <div class="bg-amber-50 border border-amber-300 text-amber-900 rounded-xl p-4 mb-4 text-sm">
   <b>Bon à savoir :</b> avec {{ r.alerte.reco }}, vous payez <b>{{ r.alerte.economie|f }}</b> d'impôt de plus par an qu'avec {{ r.alerte.alt }} (économie possible).
-  {% if r.alerte.protection %}Cet écart est le prix de la protection de votre patrimoine personnel. Si ce risque est faible pour vous, l'EI au CGU peut suffire.{% endif %}
+  {% if r.alerte.raison == 'investisseurs' %}Cet écart est le prix d'une structure plus souple pour accueillir des investisseurs. Si vous restez seul, l'EI au CGU coûte moins cher.{% else %}Cet écart est le prix de la protection de votre patrimoine personnel. Si ce risque est faible pour vous, l'EI au CGU peut suffire.{% endif %}
  </div>
  {% endif %}
 
@@ -83,8 +87,10 @@
    <div class="text-xs text-slate-500">{{ r.principal.detail }}</div></div>
   <div class="flex justify-between"><span>TVA (18 %) {{ tip('FRANCHISE') }} :</span><b>{{ 'Oui (CA > 50 M)' if r.tva else 'Non (franchise)' }}</b></div>
   <div class="flex justify-between text-base pt-2 border-t text-emerald-700"><span>Net après impôt{{ ' (salaires inclus)' if r.gerant or r.staff }} :</span><b class="whitespace-nowrap">{{ r.principal.dispo|f }}</b></div>
+  <p class="text-xs text-slate-500">{% if r.regime == 'CGU' %}= CA - charges - salaires des employés - CGU. En EI, le gérant n'est pas salarié : il se rémunère par prélèvement libre sur ce bénéfice.{% else %}= net perçu par le gérant après cotisations et IR ({{ r.b.net_gerant|f }}) + résultat de l'entreprise après IS/IMF ({{ r.b.resultat|f }}).{% endif %}</p>
  </div>
 
+ {% if r.associes == 1 %}
  <div class="bg-white p-5 rounded-xl shadow text-sm mb-4">
   <h3 class="font-bold text-base border-b pb-2 mb-2">Comparatif des régimes</h3>
   <div class="overflow-x-auto"><table class="w-full">
@@ -101,12 +107,26 @@
    <tr class="font-bold"><td class="p-1">Disponible pour vous*</td><td class="p-1 text-right">-</td><td class="p-1 text-right">{{ r.b.dispo|f }}</td></tr>
    {% endif %}
   </table></div>
+  {% if r.a.ok and r.gerant %}<p class="text-xs text-slate-500 mt-2">En EI, le gérant n'est pas salarié : son salaire n'est donc pas pris en compte dans la colonne EI (aucun IPRES, CSS, IR ni TRIMF), seuls vos employés le sont.</p>{% endif %}
   <p class="text-xs text-slate-500 mt-2">*Net du gérant + résultat après impôt, avant impôt sur dividendes. CA supposé hors TVA.</p></div>
+ {% else %}
+ <div class="bg-white p-5 rounded-xl shadow text-sm mb-4">
+  <h3 class="font-bold text-base border-b pb-2 mb-2">SARL ou SAS ? (à plusieurs associés)</h3>
+  <p class="text-xs text-slate-500 mb-2">L'EI est impossible à plusieurs. Au réel, l'impôt calculé est le même pour les deux : {{ r.societes.impot|f }}.</p>
+  <div class="overflow-x-auto"><table class="w-full">
+   <tr class="border-b"><th class="text-left p-1"></th><th class="p-1 {{ 'bg-emerald-100' if r.statut=='SARL' }}">SARL au réel</th><th class="p-1 {{ 'bg-emerald-100' if r.statut=='SAS' }}">SAS au réel</th></tr>
+   <tr class="border-b"><td class="p-1">Création (hors capital)</td><td class="p-1 text-right">{{ r.societes.SARL.total[0]|f }} - {{ r.societes.SARL.total[1]|f }}</td><td class="p-1 text-right">{{ r.societes.SAS.total[0]|f }} - {{ r.societes.SAS.total[1]|f }}</td></tr>
+   <tr class="border-b"><td class="p-1">Statuts</td><td class="p-1">Règles surtout fixées par la loi</td><td class="p-1">Très libres</td></tr>
+   <tr class="border-b"><td class="p-1">Investisseurs</td><td class="p-1">Entrée plus encadrée</td><td class="p-1">Entrée facilitée</td></tr>
+   <tr><td class="p-1">Idéal pour</td><td class="p-1">Associés qui se connaissent, structure simple</td><td class="p-1">Projet à investisseurs ou à croissance</td></tr>
+  </table></div>
+  <p class="text-xs text-slate-500 mt-2">Comparaison qualitative indicative : confirmez avec un notaire ou un juriste avant de choisir.</p></div>
+ {% endif %}
 
  {% if r.gerant or r.staff %}
  <details class="bg-white p-5 rounded-xl shadow text-sm mb-4">
   <summary class="font-bold text-base cursor-pointer">Détail des cotisations et impôts sur salaires</summary>
-  {% for nom, s in [('Gérant', r.gerant), ('Salariés (total ' ~ r.nb ~ ')', r.staff)] if s %}
+  {% for nom, s in [('Gérant (en société)', r.gerant), ('Salariés (total ' ~ r.nb ~ ')', r.staff)] if s %}
   <h4 class="font-semibold mt-4 mb-1">{{ nom }} - par an</h4>
   <table class="w-full">
    <tr class="border-b"><td class="p-1">Salaire brut</td><td class="p-1 text-right">{{ s.brut|f }}</td></tr>
@@ -134,14 +154,17 @@
 
  {% if r.nouvelle %}<p class="text-xs text-slate-600 bg-white rounded-lg p-3 mb-4">Entreprise de moins de 3 ans : IMF et CFCE sont considérés comme exonérés. Conditions exactes à confirmer auprès de la DGID.</p>{% endif %}
  <p class="text-xs text-amber-700 bg-amber-50 rounded-lg p-3 mb-4">Estimation indicative, hors quotient familial détaillé, abattements et exonérations. Taux et seuils (CGU, TRIMF, CFCE) à valider auprès de la DGID ou d'un expert-comptable.</p>
- <button type="button" onclick="window.print()" class="print:hidden w-full border border-emerald-600 text-emerald-700 bg-white rounded-lg p-3 font-semibold mb-6">Imprimer / Enregistrer en PDF</button>
+ <div class="print:hidden grid grid-cols-2 gap-2 mb-6">
+  <button type="button" onclick="window.print()" class="border border-emerald-600 text-emerald-700 bg-white rounded-lg p-3 text-sm font-semibold">Imprimer / Enregistrer en PDF</button>
+  <button type="button" class="wa text-white rounded-lg p-3 text-sm font-semibold" style="background:#25D366" data-text="{{ r.partage }}">Partager mon bilan sur WhatsApp</button>
+ </div>
  </div>
  {% endif %}
 </section>
 
 <section id="tab-demarches" class="hidden print:hidden">
  <div class="bg-white p-5 rounded-xl shadow mb-4 text-sm">
-  <h2 class="font-bold text-base mb-1">Pièces à réunir {{ tip('NINEA') }} {{ tip('RCCM') }}</h2>
+  <h2 class="font-bold text-base mb-1">Pièces à réunir {{ tip('NINEA_RCCM') }}</h2>
   <p class="text-slate-500 mb-3">Liste indicative, cochée sur ce téléphone. Confirmez les pièces exactes auprès du guichet APIX.</p>
   {% for titre, items in checklists %}
   <h3 class="font-semibold mt-3 mb-1">{{ titre }}</h3>
@@ -152,6 +175,7 @@
  </div>
  <div class="bg-white p-5 rounded-xl shadow mb-6 text-sm">
   <h2 class="font-bold text-base mb-2">Guichets et liens utiles</h2>
+  <p class="text-slate-500 mb-3">Le dépôt du dossier se fait au <b>BCE (APIX) à Dakar</b>, et dans les <b>antennes régionales ou les Tribunaux en région</b>.</p>
   {% for nom, url, desc in liens %}
   <a href="{{ url }}" target="_blank" rel="noopener" class="block border rounded-lg p-3 mb-2"><b class="text-emerald-700">{{ nom }}</b><br><span class="text-xs text-slate-500">{{ desc }}</span></a>
   {% endfor %}
@@ -189,6 +213,7 @@ document.addEventListener('click', e => {
   const t = e.target.closest('button'); if (!t) return;
   if (t.dataset.add) { const i = $('#'+t.dataset.target); i.value = fmt((parseInt(i.value.replace(/\s/g,''))||0) + parseInt(t.dataset.add)); saveForm(); }
   if (t.dataset.clear) { $('#'+t.dataset.clear).value = ''; saveForm(); }
+  if (t.classList.contains('wa')) { window.open('https://wa.me/?text=' + encodeURIComponent(t.dataset.text), '_blank'); }
   if (t.classList.contains('tipbtn')) { const g = GLOSS[t.dataset.k]; if (g) { $('#mTitre').textContent = g[0]; $('#mTexte').textContent = g[1]; $('#modal').classList.remove('hidden'); } }
 });
 $('#mClose').onclick = () => $('#modal').classList.add('hidden');
